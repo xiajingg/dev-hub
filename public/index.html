@@ -233,7 +233,7 @@
         <tr>
           <th style="width:120px">状态</th>
           <th>名称</th>
-          <th style="width:110px">端口</th>
+          <th style="width:132px">端口</th>
           <th style="width:90px">PID</th>
           <th style="width:90px">内存</th>
           <th>工作目录</th>
@@ -264,6 +264,7 @@
         <div class="field">
           <label>端口（留空自动探测）</label>
           <input id="fPort" placeholder="例如 5173" />
+          <input type="hidden" id="fHost" />
           <div class="chips" id="portHint"></div>
         </div>
       </div>
@@ -302,7 +303,8 @@
         （例如 <code>npm run dev</code> 会显示成 <code>node .../vite.js</code>，<code>go run .</code> 会显示成临时二进制路径）。
         导入后建议把命令改成你平时用的原始写法。<br />
         另：<b>环境变量拿不到</b>，需要的话请导入后手动补；<b>已经停掉的项目扫不出来</b>，只能手动登记。<br />
-        <b>端口是唯一键</b>：端口已被某条记录认领的候选会自动去重、默认不勾选（鼠标悬停徽标看是被谁占了）。
+        <b>唯一键是「地址 + 端口」</b>：已被某条记录认领的候选会自动去重、默认不勾选（鼠标悬停徽标看是被谁占了）。
+        注意 <code>127.0.0.1:5173</code> 和 <code>[::1]:5173</code> 是两条不同的记录，不算冲突。
       </div>
       <table>
         <thead>
@@ -413,23 +415,29 @@
       var isBusy = !!busy[p.id];
       var canStart = p.status !== 'running';
       var links = p.portLinks || [];
-      var byPort = {};
-      links.forEach(function (l) { byPort[l.port] = l; });
       var tips = [];
       if (p.livePorts && p.livePorts.length) tips.push('服务端口：' + p.livePorts.join('、'));
       if (p.hiddenPorts && p.hiddenPorts.length) tips.push('已折叠（内部 / 管理端口）：' + p.hiddenPorts.join('、'));
+      if (p.claimedPort) tips.push('本记录认领：' + (p.claimedHost || '*') + ':' + p.claimedPort);
       var tip = esc(tips.join('\n'));
 
-      var primaryLink = p.port ? byPort[p.port] : null;
+      // 地址不是 127.0.0.1 时把地址一起显示 —— 否则双栈下两个 5173 根本分不清
+      var portTxt = p.port ? (p.host === '::1' ? '[::1]:' + p.port : String(p.port)) : '';
+      var primaryLink = p.port
+        ? links.filter(function (l) {
+            return l.port === p.port && (!p.host || l.host === p.host);
+          })[0] || null
+        : null;
+
       var portHtml;
       if (!p.port) {
         portHtml = '<span class="dim">—</span>';
       } else if (primaryLink) {
         portHtml =
           '<a class="port hot portlink" href="' + esc(primaryLink.url) + '" target="_blank" rel="noopener" ' +
-          'title="在新标签页打开 ' + esc(primaryLink.url) + '">' + esc(p.port) + '</a>';
+          'title="在新标签页打开 ' + esc(primaryLink.url) + '">' + esc(portTxt) + '</a>';
       } else {
-        portHtml = '<span class="port" title="' + tip + '">' + esc(p.port) + '</span>';
+        portHtml = '<span class="port" title="' + tip + '">' + esc(portTxt) + '</span>';
       }
 
       // 「+N」= 除主端口外还有几个端口可以直接打开
@@ -442,6 +450,10 @@
         '<td>' + stateCell(p) + '</td>' +
         '<td><b>' + esc(p.name) + '</b>' +
           (p.verify === 'unverified' ? '<span class="badge warn">未校验</span>' : '') +
+          (p.portStale
+            ? '<span class="badge warn" title="登记时钉的 ' + esc(p.claimLabel) +
+              ' 现在已经没人在监听了，多半是服务换了端口。点「编辑」重钉一下，否则导入去重认不出它">端口已变</span>'
+            : '') +
           (p.stopCommand ? '<span class="badge" title="停止命令：' + esc(p.stopCommand) + '">自定义停止</span>' : '') +
           (p.logSource === 'external' ? '<span class="badge" title="日志文件：' + esc(p.logPath || '') + '">项目日志</span>' : '') +
         '</td>' +
@@ -490,7 +502,9 @@
         .map(function (l) {
           return (
             '<div class="row">' +
-            '<a href="' + esc(l.url) + '" target="_blank" rel="noopener">' + esc(l.port) + '</a>' +
+            '<a href="' + esc(l.url) + '" target="_blank" rel="noopener">' +
+            esc(l.host === '127.0.0.1' ? String(l.port) : '[' + l.host + ']:' + l.port) +
+            '</a>' +
             '<span class="c">' + esc(l.cmd || '') + '</span>' +
             '<span class="k">' + esc(KIND_LABEL[l.kind] || '') + '</span>' +
             '</div>'
@@ -567,6 +581,7 @@
     $('fCommand').value = '';
     $('fName').value = '';
     $('fPort').value = '';
+    $('fHost').value = '';
     $('fEnv').value = '';
     $('fStop').value = '';
     $('fLogFile').value = '';
@@ -582,6 +597,7 @@
     $('fCommand').value = p.command || '';
     $('fName').value = p.name || '';
     $('fPort').value = p.port || '';
+    $('fHost').value = p.host || '';
     $('fEnv').value = Object.keys(p.env || {}).map(function (k) { return k + '=' + p.env[k]; }).join('\n');
     $('fStop').value = p.stopCommand || '';
     $('fLogFile').value = p.logFile || '';
@@ -603,8 +619,8 @@
   }
 
   // 列出该目录下正在监听的服务端口，点一下钉住本记录要用的那个。
-  // 这是「前后端拆成两条记录」的入口：同一目录建两条，各钉一个端口。
-  function renderPortChips(cwd, pinned) {
+  // 唯一键是「地址 + 端口」，所以标签上带地址 —— 双栈下 127.0.0.1:5173 和 [::1]:5173 是两条不同的记录。
+  function renderPortChips(cwd, pinnedPort, pinnedHost) {
     var box = $('portHint');
     box.innerHTML = '';
     if (!cwd) return;
@@ -612,15 +628,31 @@
       .then(function (d) {
         var svc = d.services || [];
         if (!svc.length) return;
+
         var head = document.createElement('span');
-        head.textContent = '该目录下有 ' + svc.length + ' 个服务端口在跑，点一下钉住本记录要用的那个：';
+        if (pinnedPort) {
+          head.textContent = '本记录认领：' + (pinnedHost || '*') + ':' + pinnedPort + '。改认领请点下面：';
+        } else {
+          head.textContent = '该目录下有 ' + svc.length + ' 个服务端口在跑，点一下钉住本记录要用的那个：';
+        }
         box.appendChild(head);
+
         svc.forEach(function (s) {
+          var pinnedHostNorm = pinnedHost || '';
+          var hostVal = s.bindHost === '*' ? '' : s.host || '';
+          var on = String(pinnedPort) === String(s.port) && pinnedHostNorm === hostVal;
+          var label = (s.bindHost === '*' ? '*' : s.host) + ':' + s.port;
+
           var b = document.createElement('button');
           b.type = 'button';
-          b.className = 'chip' + (String(pinned) === String(s.port) ? ' on' : '');
+          b.className = 'chip' + (on ? ' on' : '');
           b.setAttribute('data-port', s.port);
-          b.innerHTML = s.port + '<i>' + esc(s.cmd) + '</i>';
+          b.setAttribute('data-host', hostVal);
+          b.title =
+            s.bindHost === '*'
+              ? '绑在所有地址上（127.0.0.1 和 ::1 都能访问）'
+              : '只绑在 ' + s.host + ' 上';
+          b.innerHTML = esc(label) + '<i>' + esc(s.cmd) + '</i>';
           box.appendChild(b);
         });
       })
@@ -642,7 +674,7 @@
         if (r.port) html += '<span class="dim">· 从命令里解析到端口 ' + r.port + '（启动后会自动校准）</span>';
         $('parseHint').innerHTML = html;
         if (!$('fName').value) $('fName').placeholder = r.name || '';
-        renderPortChips(r.cwd, $('fPort').value);
+        renderPortChips(r.cwd, $('fPort').value, $('fHost').value);
         return r;
       });
   }
@@ -652,14 +684,29 @@
     parseTimer = setTimeout(doParse, 260);
   });
 
-  // 点端口标签 → 钉住 / 取消
+  // 点端口标签 → 钉住 / 取消（同时钉地址和端口）
   $('portHint').addEventListener('click', function (ev) {
     var b = ev.target.closest('button[data-port]');
     if (!b) return;
     var p = b.getAttribute('data-port');
-    $('fPort').value = $('fPort').value === p ? '' : p;
+    var h = b.getAttribute('data-host') || '';
+    var same = $('fPort').value === p && ($('fHost').value || '') === h;
+    $('fPort').value = same ? '' : p;
+    $('fHost').value = same ? '' : h;
     Array.prototype.forEach.call($('portHint').querySelectorAll('.chip'), function (c) {
-      c.classList.toggle('on', c.getAttribute('data-port') === $('fPort').value);
+      c.classList.toggle(
+        'on',
+        c.getAttribute('data-port') === $('fPort').value &&
+          (c.getAttribute('data-host') || '') === ($('fHost').value || '')
+      );
+    });
+  });
+
+  // 手动改端口号 = 放弃已钉的地址（地址交给启动后自动探测）
+  $('fPort').addEventListener('input', function () {
+    $('fHost').value = '';
+    Array.prototype.forEach.call($('portHint').querySelectorAll('.chip'), function (c) {
+      c.classList.remove('on');
     });
   });
 
@@ -670,6 +717,7 @@
       command: $('fCommand').value,
       name: $('fName').value,
       port: $('fPort').value ? Number($('fPort').value) : null,
+      host: $('fHost').value,
       env: envFromText($('fEnv').value),
       stopCommand: $('fStop').value,
       logFile: $('fLogFile').value,
@@ -720,7 +768,7 @@
         '<td><input type="checkbox" data-f="pick" ' + (c.pick ? 'checked' : '') + ' /></td>' +
         '<td><input data-f="name" value="' + esc(c.name) + '" />' +
           (c.duplicate
-            ? '<span class="badge warn" title="' + esc(c.duplicateReason) + '">' +
+            ? '<span class="badge warn dup" title="' + esc(c.duplicateReason) + '">' +
               (c.portClash && c.portClash.length ? '端口已占用' : '已登记') + '</span>'
             : '') +
           (c.commandReliable ? '' : '<span class="badge warn">命令待补全</span>') + '</td>' +

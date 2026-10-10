@@ -109,6 +109,25 @@
     vertical-align: 1px; cursor: help;
   }
   .portcell { white-space: nowrap; }
+  a.portlink { text-decoration: none; border-bottom: 1px dotted var(--accent); }
+  a.portlink:hover { border-bottom-style: solid; }
+  .portmore { cursor: pointer; }
+  .portmore:hover { background: #dde3ec; color: var(--text); }
+
+  #portPop {
+    position: fixed; z-index: 80; display: none;
+    background: #fff; border: 1px solid var(--border-strong); border-radius: 8px;
+    box-shadow: 0 12px 32px rgba(16, 24, 40, .16);
+    padding: 6px; min-width: 240px; max-height: 62vh; overflow: auto;
+  }
+  #portPop.open { display: block; }
+  #portPop .hd { font-size: 11.5px; color: var(--muted); padding: 4px 8px 6px; }
+  #portPop .row { display: flex; align-items: center; gap: 9px; padding: 5px 8px; border-radius: 5px; }
+  #portPop .row:hover { background: #f4f6f9; }
+  #portPop .row a { font-family: var(--mono); font-weight: 600; color: var(--accent); text-decoration: none; min-width: 54px; }
+  #portPop .row a:hover { text-decoration: underline; }
+  #portPop .row .c { color: var(--muted); font-size: 11.5px; }
+  #portPop .row .k { margin-left: auto; font-size: 10.5px; color: var(--muted); background: #eef1f5; border-radius: 3px; padding: 0 5px; }
   .actions { display: flex; gap: 5px; justify-content: flex-end; flex-wrap: nowrap; }
   .actions button { white-space: nowrap; }
   .empty { padding: 40px; text-align: center; color: var(--muted); }
@@ -393,15 +412,31 @@
     tbody.innerHTML = projects.map(function (p) {
       var isBusy = !!busy[p.id];
       var canStart = p.status !== 'running';
-      var extra = (p.extraPorts || []).length;
+      var links = p.portLinks || [];
+      var byPort = {};
+      links.forEach(function (l) { byPort[l.port] = l; });
       var tips = [];
       if (p.livePorts && p.livePorts.length) tips.push('服务端口：' + p.livePorts.join('、'));
       if (p.hiddenPorts && p.hiddenPorts.length) tips.push('已折叠（内部 / 管理端口）：' + p.hiddenPorts.join('、'));
       var tip = esc(tips.join('\n'));
-      var portHtml = p.port
-        ? '<span class="port' + (p.livePorts && p.livePorts.length ? ' hot' : '') + '" title="' + tip + '">' + esc(p.port) + '</span>' +
-          (extra ? '<i class="more" title="' + tip + '">+' + extra + '</i>' : '')
-        : '<span class="dim">—</span>';
+
+      var primaryLink = p.port ? byPort[p.port] : null;
+      var portHtml;
+      if (!p.port) {
+        portHtml = '<span class="dim">—</span>';
+      } else if (primaryLink) {
+        portHtml =
+          '<a class="port hot portlink" href="' + esc(primaryLink.url) + '" target="_blank" rel="noopener" ' +
+          'title="在新标签页打开 ' + esc(primaryLink.url) + '">' + esc(p.port) + '</a>';
+      } else {
+        portHtml = '<span class="port" title="' + tip + '">' + esc(p.port) + '</span>';
+      }
+
+      // 「+N」= 除主端口外还有几个端口可以直接打开
+      var moreCount = links.length - (primaryLink ? 1 : 0);
+      if (moreCount > 0) {
+        portHtml += '<i class="more portmore" title="点开看全部端口">+' + moreCount + '</i>';
+      }
       var dir = p.cwd || '';
       return '<tr data-id="' + p.id + '">' +
         '<td>' + stateCell(p) + '</td>' +
@@ -435,8 +470,57 @@
     });
   }
 
+  // ---------------------------------------------------------------- 端口弹出层
+  var portPop = document.createElement('div');
+  portPop.id = 'portPop';
+  document.body.appendChild(portPop);
+
+  function closePortPop() {
+    portPop.classList.remove('open');
+  }
+
+  var KIND_LABEL = { service: '服务', infra: '中间件', mgmt: '管理端口' };
+
+  function showPortPop(anchor, p) {
+    var links = p.portLinks || [];
+    if (!links.length) return;
+    portPop.innerHTML =
+      '<div class="hd">' + esc(p.name) + ' · 点端口在新标签页打开</div>' +
+      links
+        .map(function (l) {
+          return (
+            '<div class="row">' +
+            '<a href="' + esc(l.url) + '" target="_blank" rel="noopener">' + esc(l.port) + '</a>' +
+            '<span class="c">' + esc(l.cmd || '') + '</span>' +
+            '<span class="k">' + esc(KIND_LABEL[l.kind] || '') + '</span>' +
+            '</div>'
+          );
+        })
+        .join('');
+
+    var r = anchor.getBoundingClientRect();
+    portPop.classList.add('open');
+    var w = portPop.offsetWidth;
+    var h = portPop.offsetHeight;
+    var left = Math.min(r.left - 40, window.innerWidth - w - 12);
+    var top = r.bottom + 6;
+    if (top + h > window.innerHeight - 12) top = Math.max(12, r.top - h - 6);
+    portPop.style.left = Math.max(12, left) + 'px';
+    portPop.style.top = Math.max(12, top) + 'px';
+  }
+
   // ---------------------------------------------------------------- 行操作
   $('rows').addEventListener('click', function (ev) {
+    // 点「+N」→ 弹出全部端口，每个都能直接打开
+    var more = ev.target.closest('.portmore');
+    if (more) {
+      var mtr = more.closest('tr');
+      var mp = projects.find(function (x) { return x.id === mtr.getAttribute('data-id'); });
+      if (mp) showPortPop(more, mp);
+      return;
+    }
+    closePortPop();
+
     var btn = ev.target.closest('button[data-act]');
     if (!btn) return;
     var tr = ev.target.closest('tr');
@@ -752,14 +836,20 @@
   document.addEventListener('click', function (ev) {
     var c = ev.target.closest('[data-close]');
     if (c) $(c.getAttribute('data-close')).classList.add('hidden');
+    // 点别处收起端口弹出层
+    if (!ev.target.closest('#portPop') && !ev.target.closest('.portmore')) closePortPop();
   });
   document.addEventListener('keydown', function (ev) {
     if (ev.key === 'Escape') {
+      if (portPop.classList.contains('open')) return closePortPop();
       if ($('drawer').classList.contains('open')) return closeLog();
       $('maskEdit').classList.add('hidden');
       $('maskScan').classList.add('hidden');
     }
   });
+  // 弹出层是 fixed 定位，滚动/改窗口大小后就对不上位置了，直接收起
+  window.addEventListener('scroll', closePortPop, true);
+  window.addEventListener('resize', closePortPop);
 
   $('btnRefresh').addEventListener('click', function () { load(); });
 

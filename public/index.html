@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>dev-hub · 本地项目启动管理</title>
+<style>
+  :root {
+    --bg: #f5f6f8;
+    --panel: #ffffff;
+    --border: #e2e5ea;
+    --border-strong: #cbd2da;
+    --text: #1f2328;
+    --muted: #6b7280;
+    --accent: #2563eb;
+    --accent-soft: #eff4ff;
+    --green: #16a34a;
+    --red: #dc2626;
+    --amber: #d97706;
+    --gray: #9aa2ad;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 13px/1.5 -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+  }
+  button {
+    font: inherit;
+    cursor: pointer;
+    border: 1px solid var(--border-strong);
+    background: #fff;
+    color: var(--text);
+    border-radius: 6px;
+    padding: 5px 11px;
+    transition: background .12s, border-color .12s;
+  }
+  button:hover { background: #f2f4f7; }
+  button:active { background: #e9ecf1; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover { background: #1d4ed8; }
+  button.danger { color: var(--red); border-color: #f0c4c4; }
+  button.danger:hover { background: #fdf2f2; }
+  button.mini { padding: 3px 8px; font-size: 12px; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  input, textarea, select {
+    font: inherit;
+    width: 100%;
+    padding: 6px 9px;
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    background: #fff;
+    color: var(--text);
+    outline: none;
+  }
+  input:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  textarea { resize: vertical; font-family: var(--mono); font-size: 12.5px; }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 4px; }
+
+  header {
+    position: sticky; top: 0; z-index: 20;
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 18px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 { font-size: 14px; font-weight: 650; margin: 0; letter-spacing: .2px; }
+  header .stat { color: var(--muted); font-size: 12px; }
+  header .spacer { flex: 1; }
+
+  main { padding: 16px 18px 60px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    text-align: left; font-weight: 550; font-size: 11.5px; color: var(--muted);
+    padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap;
+    background: #fafbfc;
+  }
+  td { padding: 8px 10px; border-bottom: 1px solid #f0f2f5; vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: #fafbfc; }
+  td.mono, .mono { font-family: var(--mono); font-size: 12px; }
+  .dim { color: var(--muted); }
+  .truncate { max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; vertical-align: middle; }
+  .dot.running { background: var(--green); box-shadow: 0 0 0 3px rgba(22,163,74,.15); }
+  .dot.stopped { background: var(--gray); }
+  .dot.error { background: var(--red); box-shadow: 0 0 0 3px rgba(220,38,38,.15); }
+  .dot.orphan { background: var(--amber); box-shadow: 0 0 0 3px rgba(217,119,6,.15); }
+  .state { display: flex; align-items: center; gap: 7px; white-space: nowrap; }
+  .state small { color: var(--muted); }
+
+  .badge {
+    display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 4px;
+    border: 1px solid var(--border-strong); color: var(--muted); margin-left: 6px;
+  }
+  .badge.warn { color: var(--amber); border-color: #f0d9a8; background: #fffbf0; }
+  .badge.info { color: var(--accent); border-color: #c7d9fb; background: var(--accent-soft); }
+  .port { font-family: var(--mono); font-size: 12px; }
+  .port.hot { color: var(--accent); font-weight: 600; }
+  .more {
+    font-style: normal; font-size: 10.5px; color: var(--muted);
+    background: #eef1f5; border-radius: 3px; padding: 0 4px; margin-left: 4px;
+    vertical-align: 1px; cursor: help;
+  }
+  .portcell { white-space: nowrap; }
+  .actions { display: flex; gap: 5px; justify-content: flex-end; flex-wrap: nowrap; }
+  .actions button { white-space: nowrap; }
+  .empty { padding: 40px; text-align: center; color: var(--muted); }
+
+  /* 遮罩 / 弹层 */
+  .mask {
+    position: fixed; inset: 0; background: rgba(24,28,35,.34);
+    display: flex; align-items: flex-start; justify-content: center;
+    padding: 60px 20px; z-index: 50;
+  }
+  .mask.hidden { display: none; }
+  .modal {
+    background: var(--panel); border-radius: 10px; width: 100%; max-width: 720px;
+    box-shadow: 0 18px 50px rgba(16,24,40,.22); overflow: hidden;
+    max-height: calc(100vh - 120px); display: flex; flex-direction: column;
+  }
+  .modal.wide { max-width: 960px; }
+  .modal-head {
+    display: flex; align-items: center; padding: 13px 18px;
+    border-bottom: 1px solid var(--border); font-weight: 600; font-size: 13.5px;
+  }
+  .modal-head .spacer { flex: 1; }
+  .modal-body { padding: 18px; overflow: auto; }
+  .modal-foot {
+    display: flex; gap: 8px; justify-content: flex-end; align-items: center;
+    padding: 12px 18px; border-top: 1px solid var(--border); background: #fafbfc;
+  }
+  .modal-foot .spacer { flex: 1; }
+  .field { margin-bottom: 14px; }
+  .row2 { display: flex; gap: 12px; }
+  .row2 > * { flex: 1; }
+  .hint { font-size: 12px; margin-top: 7px; display: flex; flex-direction: column; gap: 3px; }
+  .hint .ok { color: var(--green); }
+  .hint .bad { color: var(--red); }
+  .hint .warn { color: var(--amber); }
+  .hint .mono { font-family: var(--mono); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; font-size: 12px; color: var(--muted); }
+  .chips:empty { display: none; }
+  .chip { padding: 3px 8px; border-radius: 5px; font-family: var(--mono); font-size: 12px; display: inline-flex; align-items: center; gap: 5px; }
+  .chip i { font-style: normal; color: var(--muted); font-size: 11px; }
+  .chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .chip.on i { color: rgba(255, 255, 255, .78); }
+  .note {
+    background: #fffbf0; border: 1px solid #f0d9a8; color: #8a5a00;
+    padding: 9px 11px; border-radius: 6px; font-size: 12px; line-height: 1.6; margin-bottom: 14px;
+  }
+  .note b { color: #7a4f00; }
+
+  /* 日志抽屉 */
+  .drawer {
+    position: fixed; top: 0; right: 0; bottom: 0; width: 46%; min-width: 480px;
+    background: #1e2228; color: #dfe3e8; z-index: 60;
+    display: flex; flex-direction: column;
+    box-shadow: -12px 0 34px rgba(16,24,40,.22);
+    transform: translateX(101%); transition: transform .18s ease;
+  }
+  .drawer.open { transform: translateX(0); }
+  .drawer.full { width: 100%; min-width: 0; }
+  .drawer-head {
+    display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+    background: #171a1f; border-bottom: 1px solid #2b3038; font-size: 12.5px;
+  }
+  .drawer-head .title { font-weight: 600; white-space: nowrap; }
+  .drawer-head .path { color: #8b93a0; font-family: var(--mono); font-size: 11.5px; max-width: 34%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .drawer-head .spacer { flex: 1; }
+  .drawer-head button { background: #262b33; border-color: #363d47; color: #dfe3e8; white-space: nowrap; }
+  .drawer-head button:hover { background: #30363f; }
+  .drawer-body { flex: 1; overflow: auto; padding: 12px 14px; }
+  .drawer-body pre {
+    margin: 0; font-family: var(--mono); font-size: 12px; line-height: 1.55;
+    white-space: pre-wrap; word-break: break-all; color: #d7dce3;
+  }
+
+  /* 提示条 */
+  #toasts { position: fixed; right: 18px; bottom: 18px; z-index: 90; display: flex; flex-direction: column; gap: 8px; }
+  .toast {
+    background: #fff; border: 1px solid var(--border-strong); border-left: 3px solid var(--accent);
+    border-radius: 6px; padding: 9px 13px; max-width: 460px; font-size: 12.5px;
+    box-shadow: 0 8px 24px rgba(16,24,40,.14);
+  }
+  .toast.err { border-left-color: var(--red); }
+  .toast.warn { border-left-color: var(--amber); }
+  .toast.ok { border-left-color: var(--green); }
+  .toast .t { font-weight: 600; margin-bottom: 2px; }
+  .toast .d { color: var(--muted); word-break: break-word; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>dev-hub</h1>
+  <span class="stat" id="stat">加载中…</span>
+  <span class="spacer"></span>
+  <button id="btnScan">扫描当前运行的服务</button>
+  <button id="btnNew" class="primary">+ 新建项目</button>
+  <button id="btnRefresh">刷新</button>
+</header>
+
+<main>
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:120px">状态</th>
+          <th>名称</th>
+          <th style="width:110px">端口</th>
+          <th style="width:90px">PID</th>
+          <th style="width:90px">内存</th>
+          <th>工作目录</th>
+          <th style="width:326px"></th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div class="empty" id="empty" style="display:none">还没有项目。点右上角「新建项目」，粘贴一条以 <code>cd /绝对路径 &amp;&amp;</code> 开头的启动命令。</div>
+  </div>
+</main>
+
+<!-- 新建 / 编辑 -->
+<div class="mask hidden" id="maskEdit">
+  <div class="modal">
+    <div class="modal-head"><span id="editTitle">新建项目</span><span class="spacer"></span><button class="mini" data-close="maskEdit">关闭</button></div>
+    <div class="modal-body">
+      <div class="field">
+        <label>启动命令（必须以 <code>cd &lt;绝对路径&gt; &amp;&amp;</code> 开头）</label>
+        <textarea id="fCommand" rows="3" placeholder="cd ~/projects/my-app && npm run dev"></textarea>
+        <div class="hint" id="parseHint"></div>
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label>名称</label>
+          <input id="fName" placeholder="留空则用目录名" />
+        </div>
+        <div class="field">
+          <label>端口（留空自动探测）</label>
+          <input id="fPort" placeholder="例如 5173" />
+          <div class="chips" id="portHint"></div>
+        </div>
+      </div>
+      <div class="field">
+        <label>环境变量（每行一条 KEY=VALUE，可留空）</label>
+        <textarea id="fEnv" rows="3" placeholder="JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk-21.jdk/Contents/Home"></textarea>
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label>停止命令（可选）</label>
+          <input id="fStop" placeholder="留空则按默认方式停止" />
+          <div class="hint"><span class="dim">填了就先执行它。若执行完进程还在跑，会自动退回默认方式（杀进程组）强制停止。</span></div>
+        </div>
+        <div class="field">
+          <label>日志文件（可选）</label>
+          <input id="fLogFile" placeholder="留空则显示平台抓取的输出" />
+          <div class="hint"><span class="dim">填了就实时滚动这个文件。支持 <code>~</code> 和相对项目目录的写法。</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <span class="spacer"></span>
+      <button data-close="maskEdit">取消</button>
+      <button class="primary" id="btnSave">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 扫描导入 -->
+<div class="mask hidden" id="maskScan">
+  <div class="modal wide">
+    <div class="modal-head"><span>扫描当前运行的服务</span><span class="spacer"></span><button class="mini" data-close="maskScan">关闭</button></div>
+    <div class="modal-body">
+      <div class="note">
+        <b>导入前请确认命令。</b>这里显示的是进程的<b>实际命令行</b>，不一定等于你当初敲的那条
+        （例如 <code>npm run dev</code> 会显示成 <code>node .../vite.js</code>，<code>go run .</code> 会显示成临时二进制路径）。
+        导入后建议把命令改成你平时用的原始写法。<br />
+        另：<b>环境变量拿不到</b>，需要的话请导入后手动补；<b>已经停掉的项目扫不出来</b>，只能手动登记。<br />
+        <b>端口是唯一键</b>：端口已被某条记录认领的候选会自动去重、默认不勾选（鼠标悬停徽标看是被谁占了）。
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th style="width:34px"></th>
+            <th style="width:196px">名称</th>
+            <th style="width:78px">端口</th>
+            <th>命令（可编辑）</th>
+          </tr>
+        </thead>
+        <tbody id="scanRows"></tbody>
+      </table>
+      <div class="empty" id="scanEmpty" style="display:none">没有扫到属于你的项目进程。</div>
+    </div>
+    <div class="modal-foot">
+      <span class="dim" id="scanCount"></span>
+      <span class="spacer"></span>
+      <button data-close="maskScan">取消</button>
+      <button class="primary" id="btnImport">导入选中</button>
+    </div>
+  </div>
+</div>
+
+<!-- 日志抽屉 -->
+<div class="drawer" id="drawer">
+  <div class="drawer-head">
+    <span class="title" id="logTitle">日志</span>
+    <span class="path" id="logPath"></span>
+    <span class="spacer"></span>
+    <button class="mini" id="btnFollow">自动滚动：开</button>
+    <button class="mini" id="btnClearLog">清空</button>
+    <button class="mini" id="btnDownloadLog">下载</button>
+    <button class="mini" id="btnFullLog">全屏</button>
+    <button class="mini" id="btnCloseLog">关闭</button>
+  </div>
+  <div class="drawer-body" id="logBody"><pre id="logText"></pre></div>
+</div>
+
+<div id="toasts"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var $ = function (id) { return document.getElementById(id); };
+  var projects = [];
+  var editingId = null;
+  var parseTimer = null;
+  var log = { id: null, name: '', offset: 0, timer: null, follow: true, external: false, warned: false };
+  var scanList = [];
+  var busy = {};
+
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  function api(path, opts) {
+    var o = Object.assign({ headers: { 'Content-Type': 'application/json' } }, opts || {});
+    return fetch(path, o).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (data) {
+        if (!r.ok) { var e = new Error(data.error || ('HTTP ' + r.status)); e.data = data; throw e; }
+        return data;
+      });
+    });
+  }
+
+  function toast(title, detail, kind) {
+    var el = document.createElement('div');
+    el.className = 'toast ' + (kind || '');
+    el.innerHTML = '<div class="t">' + esc(title) + '</div>' + (detail ? '<div class="d">' + esc(detail) + '</div>' : '');
+    $('toasts').appendChild(el);
+    setTimeout(function () { el.remove(); }, kind === 'err' ? 9000 : 4500);
+  }
+
+  function fmtMem(bytes) {
+    if (!bytes) return '—';
+    var mb = bytes / 1048576;
+    return mb >= 1024 ? (mb / 1024).toFixed(2) + ' GB' : mb.toFixed(0) + ' MB';
+  }
+
+  // ---------------------------------------------------------------- 列表
+  function stateCell(p) {
+    if (p.status === 'running') {
+      return '<span class="state"><i class="dot running"></i><small>运行中</small>' +
+        (p.adopted ? '<span class="badge info">接管</span>' : '') + '</span>';
+    }
+    if (p.external) {
+      return '<span class="state"><i class="dot orphan"></i><small>外部运行中</small></span>';
+    }
+    if (p.orphan) {
+      return '<span class="state"><i class="dot orphan"></i><small>残留占用</small></span>';
+    }
+    if (p.status === 'error') {
+      return '<span class="state"><i class="dot error"></i><small>异常退出</small></span>';
+    }
+    return '<span class="state"><i class="dot stopped"></i><small>已停止</small></span>';
+  }
+
+  function render() {
+    var tbody = $('rows');
+    var running = projects.filter(function (p) { return p.status === 'running'; }).length;
+    $('stat').textContent = '共 ' + projects.length + ' 个项目 · ' + running + ' 个运行中';
+    $('empty').style.display = projects.length ? 'none' : 'block';
+
+    tbody.innerHTML = projects.map(function (p) {
+      var isBusy = !!busy[p.id];
+      var canStart = p.status !== 'running';
+      var extra = (p.extraPorts || []).length;
+      var tips = [];
+      if (p.livePorts && p.livePorts.length) tips.push('服务端口：' + p.livePorts.join('、'));
+      if (p.hiddenPorts && p.hiddenPorts.length) tips.push('已折叠（内部 / 管理端口）：' + p.hiddenPorts.join('、'));
+      var tip = esc(tips.join('\n'));
+      var portHtml = p.port
+        ? '<span class="port' + (p.livePorts && p.livePorts.length ? ' hot' : '') + '" title="' + tip + '">' + esc(p.port) + '</span>' +
+          (extra ? '<i class="more" title="' + tip + '">+' + extra + '</i>' : '')
+        : '<span class="dim">—</span>';
+      var dir = p.cwd || '';
+      return '<tr data-id="' + p.id + '">' +
+        '<td>' + stateCell(p) + '</td>' +
+        '<td><b>' + esc(p.name) + '</b>' +
+          (p.verify === 'unverified' ? '<span class="badge warn">未校验</span>' : '') +
+          (p.stopCommand ? '<span class="badge" title="停止命令：' + esc(p.stopCommand) + '">自定义停止</span>' : '') +
+          (p.logSource === 'external' ? '<span class="badge" title="日志文件：' + esc(p.logPath || '') + '">项目日志</span>' : '') +
+        '</td>' +
+        '<td class="portcell">' + portHtml + '</td>' +
+        '<td class="mono dim">' + (p.pid || '—') + '</td>' +
+        '<td class="mono dim">' + fmtMem(p.memory) + '</td>' +
+        '<td class="mono dim"><div class="truncate" title="' + esc(dir) + '">' + esc(dir) + '</div></td>' +
+        '<td><div class="actions">' +
+          '<button class="mini" data-act="start" ' + (canStart ? '' : 'disabled') + '>启动</button>' +
+          '<button class="mini" data-act="stop" ' + (p.status === 'running' ? '' : 'disabled') + '>停止</button>' +
+          '<button class="mini" data-act="restart">重启</button>' +
+          '<button class="mini" data-act="logs">日志</button>' +
+          '<button class="mini" data-act="edit">编辑</button>' +
+          '<button class="mini danger" data-act="del">删除</button>' +
+        '</div></td>' +
+      '</tr>';
+    }).join('');
+  }
+
+  function load() {
+    return api('/api/projects').then(function (d) {
+      projects = d.projects || [];
+      render();
+    }).catch(function (e) {
+      $('stat').textContent = '加载失败：' + e.message;
+    });
+  }
+
+  // ---------------------------------------------------------------- 行操作
+  $('rows').addEventListener('click', function (ev) {
+    var btn = ev.target.closest('button[data-act]');
+    if (!btn) return;
+    var tr = ev.target.closest('tr');
+    var id = tr.getAttribute('data-id');
+    var act = btn.getAttribute('data-act');
+    var p = projects.find(function (x) { return x.id === id; });
+    if (!p) return;
+
+    if (act === 'logs') return openLog(p);
+    if (act === 'edit') return openEdit(p);
+    if (act === 'del') {
+      if (!confirm('从列表移除「' + p.name + '」？\n\n注意：只移除记录，不会停止正在运行的进程。需要停止请先点「停止」。')) return;
+      return api('/api/projects/' + id, { method: 'DELETE' })
+        .then(function () { toast('已删除', p.name, 'ok'); return load(); })
+        .catch(function (e) { toast('删除失败', e.message, 'err'); });
+    }
+    if (act === 'start' || act === 'stop' || act === 'restart') {
+      busy[id] = true; render();
+      api('/api/projects/' + id + '/' + act, { method: 'POST' })
+        .then(function (r) {
+          delete busy[id];
+          if (act === 'stop') {
+            var how = r.via === 'script' ? '（按停止命令）' : r.via === 'script+kill' ? '（停止命令 + 强制）' : '';
+            toast('已停止', p.name + how, 'ok');
+            if (r.warning) toast('注意', r.warning, 'warn');
+          } else {
+            toast(act === 'start' ? '已启动' : '已重启', p.name + (r.pid ? ' · PID ' + r.pid : ''), 'ok');
+          }
+          (r.warnings || []).forEach(function (w) { toast('注意', w, 'warn'); });
+          return load();
+        })
+        .catch(function (e) {
+          delete busy[id];
+          toast(e.data && e.data.portConflict ? '端口冲突' : '操作失败', e.message, 'err');
+          return load();
+        });
+    }
+  });
+
+  // ---------------------------------------------------------------- 新建 / 编辑
+  function openNew() {
+    editingId = null;
+    $('editTitle').textContent = '新建项目';
+    $('fCommand').value = '';
+    $('fName').value = '';
+    $('fPort').value = '';
+    $('fEnv').value = '';
+    $('fStop').value = '';
+    $('fLogFile').value = '';
+    $('parseHint').innerHTML = '';
+    $('portHint').innerHTML = '';
+    $('maskEdit').classList.remove('hidden');
+    $('fCommand').focus();
+  }
+
+  function openEdit(p) {
+    editingId = p.id;
+    $('editTitle').textContent = '编辑：' + p.name;
+    $('fCommand').value = p.command || '';
+    $('fName').value = p.name || '';
+    $('fPort').value = p.port || '';
+    $('fEnv').value = Object.keys(p.env || {}).map(function (k) { return k + '=' + p.env[k]; }).join('\n');
+    $('fStop').value = p.stopCommand || '';
+    $('fLogFile').value = p.logFile || '';
+    $('parseHint').innerHTML = '';
+    $('portHint').innerHTML = '';
+    $('maskEdit').classList.remove('hidden');
+    doParse();
+  }
+
+  function envFromText(text) {
+    var env = {};
+    String(text || '').split('\n').forEach(function (line) {
+      var i = line.indexOf('=');
+      if (i <= 0) return;
+      var k = line.slice(0, i).trim();
+      if (k) env[k] = line.slice(i + 1);
+    });
+    return env;
+  }
+
+  // 列出该目录下正在监听的服务端口，点一下钉住本记录要用的那个。
+  // 这是「前后端拆成两条记录」的入口：同一目录建两条，各钉一个端口。
+  function renderPortChips(cwd, pinned) {
+    var box = $('portHint');
+    box.innerHTML = '';
+    if (!cwd) return;
+    api('/api/ports/by-cwd', { method: 'POST', body: JSON.stringify({ cwd: cwd }) })
+      .then(function (d) {
+        var svc = d.services || [];
+        if (!svc.length) return;
+        var head = document.createElement('span');
+        head.textContent = '该目录下有 ' + svc.length + ' 个服务端口在跑，点一下钉住本记录要用的那个：';
+        box.appendChild(head);
+        svc.forEach(function (s) {
+          var b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'chip' + (String(pinned) === String(s.port) ? ' on' : '');
+          b.setAttribute('data-port', s.port);
+          b.innerHTML = s.port + '<i>' + esc(s.cmd) + '</i>';
+          box.appendChild(b);
+        });
+      })
+      .catch(function () {});
+  }
+
+  function doParse() {
+    var cmd = $('fCommand').value;
+    if (!cmd.trim()) { $('parseHint').innerHTML = ''; $('portHint').innerHTML = ''; return Promise.resolve(null); }
+    return api('/api/cmd/parse', { method: 'POST', body: JSON.stringify({ command: cmd }) })
+      .then(function (r) {
+        if (!r.ok) {
+          $('parseHint').innerHTML = '<span class="bad">✗ ' + esc(r.error) + '</span>';
+          $('portHint').innerHTML = '';
+          return null;
+        }
+        var html = '<span class="ok">✓ 执行目录：<span class="mono">' + esc(r.cwd) + '</span></span>';
+        if (!r.exists) html += '<span class="warn">⚠ 该目录当前不存在</span>';
+        if (r.port) html += '<span class="dim">· 从命令里解析到端口 ' + r.port + '（启动后会自动校准）</span>';
+        $('parseHint').innerHTML = html;
+        if (!$('fName').value) $('fName').placeholder = r.name || '';
+        renderPortChips(r.cwd, $('fPort').value);
+        return r;
+      });
+  }
+
+  $('fCommand').addEventListener('input', function () {
+    clearTimeout(parseTimer);
+    parseTimer = setTimeout(doParse, 260);
+  });
+
+  // 点端口标签 → 钉住 / 取消
+  $('portHint').addEventListener('click', function (ev) {
+    var b = ev.target.closest('button[data-port]');
+    if (!b) return;
+    var p = b.getAttribute('data-port');
+    $('fPort').value = $('fPort').value === p ? '' : p;
+    Array.prototype.forEach.call($('portHint').querySelectorAll('.chip'), function (c) {
+      c.classList.toggle('on', c.getAttribute('data-port') === $('fPort').value);
+    });
+  });
+
+  $('btnNew').addEventListener('click', openNew);
+
+  $('btnSave').addEventListener('click', function () {
+    var payload = {
+      command: $('fCommand').value,
+      name: $('fName').value,
+      port: $('fPort').value ? Number($('fPort').value) : null,
+      env: envFromText($('fEnv').value),
+      stopCommand: $('fStop').value,
+      logFile: $('fLogFile').value,
+    };
+    var req = editingId
+      ? api('/api/projects/' + editingId, { method: 'PUT', body: JSON.stringify(payload) })
+      : api('/api/projects', { method: 'POST', body: JSON.stringify(payload) });
+    req.then(function () {
+      $('maskEdit').classList.add('hidden');
+      toast(editingId ? '已保存' : '已创建', payload.name || '', 'ok');
+      return load();
+    }).catch(function (e) { toast('保存失败', e.message, 'err'); });
+  });
+
+  // ---------------------------------------------------------------- 扫描导入
+  $('btnScan').addEventListener('click', function () {
+    $('btnScan').disabled = true;
+    $('btnScan').textContent = '扫描中…';
+    api('/api/scan', { method: 'POST' }).then(function (d) {
+      scanList = (d.candidates || []).map(function (c) {
+        return {
+          pick: !c.duplicate,
+          name: c.name,
+          port: c.port,
+          command: c.suggestedCommand,
+          pid: c.pid,
+          pgid: c.pgid,
+          duplicate: c.duplicate,
+          duplicateReason: c.duplicateReason || '',
+          portClash: c.portClash || [],
+          commandReliable: c.commandReliable
+        };
+      });
+      renderScan();
+      $('maskScan').classList.remove('hidden');
+    }).catch(function (e) {
+      toast('扫描失败', e.message, 'err');
+    }).finally(function () {
+      $('btnScan').disabled = false;
+      $('btnScan').textContent = '扫描当前运行的服务';
+    });
+  });
+
+  function renderScan() {
+    $('scanEmpty').style.display = scanList.length ? 'none' : 'block';
+    $('scanRows').innerHTML = scanList.map(function (c, i) {
+      return '<tr data-i="' + i + '">' +
+        '<td><input type="checkbox" data-f="pick" ' + (c.pick ? 'checked' : '') + ' /></td>' +
+        '<td><input data-f="name" value="' + esc(c.name) + '" />' +
+          (c.duplicate
+            ? '<span class="badge warn" title="' + esc(c.duplicateReason) + '">' +
+              (c.portClash && c.portClash.length ? '端口已占用' : '已登记') + '</span>'
+            : '') +
+          (c.commandReliable ? '' : '<span class="badge warn">命令待补全</span>') + '</td>' +
+        '<td><input data-f="port" value="' + esc(c.port == null ? '' : c.port) + '" /></td>' +
+        '<td><input class="mono" data-f="command" value="' + esc(c.command) + '" /></td>' +
+      '</tr>';
+    }).join('');
+    updateScanCount();
+  }
+
+  function updateScanCount() {
+    var n = scanList.filter(function (c) { return c.pick; }).length;
+    $('scanCount').textContent = '已选 ' + n + ' / ' + scanList.length;
+  }
+
+  $('scanRows').addEventListener('input', function (ev) {
+    var el = ev.target;
+    var f = el.getAttribute('data-f');
+    if (!f) return;
+    var tr = el.closest('tr');
+    var i = Number(tr.getAttribute('data-i'));
+    scanList[i][f] = f === 'pick' ? el.checked : el.value;
+    if (f === 'pick') updateScanCount();
+  });
+
+  $('btnImport').addEventListener('click', function () {
+    var items = scanList.filter(function (c) { return c.pick; }).map(function (c) {
+      return { name: c.name, command: c.command, port: c.port ? Number(c.port) : null, pid: c.pid, pgid: c.pgid };
+    });
+    if (!items.length) return toast('没有选中任何项', '', 'warn');
+    $('btnImport').disabled = true;
+    api('/api/import', { method: 'POST', body: JSON.stringify({ items: items }) }).then(function (d) {
+      var res = d.results || [];
+      var ok = res.filter(function (r) { return r.ok; }).length;
+      var skipped = res.filter(function (r) { return !r.ok && r.skipped; });
+      var bad = res.filter(function (r) { return !r.ok && !r.skipped; });
+      var detail = [];
+      if (skipped.length) detail.push(skipped.length + ' 条因端口已被认领而跳过（' + skipped[0].error + '）');
+      if (bad.length) detail.push(bad.length + ' 条失败：' + bad[0].error);
+      toast('已导入 ' + ok + ' 个项目', detail.join('；'), bad.length ? 'err' : skipped.length ? 'warn' : 'ok');
+      $('maskScan').classList.add('hidden');
+      return load();
+    }).catch(function (e) {
+      toast('导入失败', e.message, 'err');
+    }).finally(function () { $('btnImport').disabled = false; });
+  });
+
+  // ---------------------------------------------------------------- 日志抽屉
+  function openLog(p) {
+    log.id = p.id; log.name = p.name; log.offset = 0; log.follow = true; log.warned = false;
+    log.external = p.logSource === 'external';
+    $('logTitle').textContent = p.name + (log.external ? ' · 项目日志文件' : '');
+    $('logPath').textContent = p.logPath || p.cwd || '';
+    $('logText').textContent = '';
+    $('btnFollow').textContent = '自动滚动：开';
+    $('btnClearLog').disabled = log.external;
+    $('btnClearLog').title = log.external ? '这是项目自己的日志文件，平台不主动清空' : '';
+    $('drawer').classList.add('open');
+    pollLog();
+    clearInterval(log.timer);
+    log.timer = setInterval(pollLog, 1000);
+  }
+
+  function pollLog() {
+    if (!log.id || document.hidden) return;
+    api('/api/projects/' + log.id + '/logs?offset=' + log.offset).then(function (d) {
+      if (d.exists === false && !log.warned) {
+        log.warned = true;
+        $('logText').textContent = '（日志文件还不存在：' + (d.file || '') + '）\n';
+      }
+      if (d.data) {
+        var body = $('logBody');
+        var near = body.scrollTop + body.clientHeight >= body.scrollHeight - 40;
+        $('logText').textContent += d.data;
+        if (log.follow || near) body.scrollTop = body.scrollHeight;
+      }
+      log.offset = d.offset;
+    }).catch(function () { /* 忽略瞬时错误 */ });
+  }
+
+  function closeLog() {
+    $('drawer').classList.remove('open');
+    clearInterval(log.timer);
+    log.timer = null; log.id = null;
+  }
+
+  $('btnCloseLog').addEventListener('click', closeLog);
+  $('btnFollow').addEventListener('click', function () {
+    log.follow = !log.follow;
+    $('btnFollow').textContent = '自动滚动：' + (log.follow ? '开' : '关');
+    if (log.follow) $('logBody').scrollTop = $('logBody').scrollHeight;
+  });
+  $('btnClearLog').addEventListener('click', function () {
+    if (!log.id) return;
+    api('/api/projects/' + log.id + '/logs/clear', { method: 'POST' })
+      .then(function () {
+        $('logText').textContent = '';
+        log.offset = 0;
+        toast('日志已清空', log.name, 'ok');
+      })
+      .catch(function (e) { toast('清空失败', e.message, 'err'); });
+  });
+  $('btnDownloadLog').addEventListener('click', function () {
+    if (log.id) window.open('/api/projects/' + log.id + '/logs/download', '_blank');
+  });
+  $('btnFullLog').addEventListener('click', function () {
+    var d = $('drawer');
+    d.classList.toggle('full');
+    $('btnFullLog').textContent = d.classList.contains('full') ? '还原' : '全屏';
+  });
+
+  // ---------------------------------------------------------------- 通用
+  document.addEventListener('click', function (ev) {
+    var c = ev.target.closest('[data-close]');
+    if (c) $(c.getAttribute('data-close')).classList.add('hidden');
+  });
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Escape') {
+      if ($('drawer').classList.contains('open')) return closeLog();
+      $('maskEdit').classList.add('hidden');
+      $('maskScan').classList.add('hidden');
+    }
+  });
+
+  $('btnRefresh').addEventListener('click', function () { load(); });
+
+  load();
+  setInterval(function () { if (!document.hidden) load(); }, 2000);
+})();
+</script>
+</body>
+</html>

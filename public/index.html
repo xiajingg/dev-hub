@@ -560,6 +560,8 @@
             var how = r.via === 'script' ? '（按停止命令）' : r.via === 'script+kill' ? '（停止命令 + 强制）' : '';
             toast('已停止', p.name + how, 'ok');
             if (r.warning) toast('注意', r.warning, 'warn');
+          } else if (r.adopted) {
+            toast('已接管', r.message || p.name + ' 本来就在跑', 'ok');
           } else {
             toast(act === 'start' ? '已启动' : '已重启', p.name + (r.pid ? ' · PID ' + r.pid : ''), 'ok');
           }

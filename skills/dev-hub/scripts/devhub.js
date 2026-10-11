@@ -73,7 +73,8 @@ function cmdList() {
       if (p.status !== 'running' && p.external) state = '外部运行中';
       if (p.status !== 'running' && p.orphan) state = '残留占用';
       const tags = [];
-      if (p.adopted) tags.push('接管');
+      // 来源明说 —— 别让 AI 靠「有没有标记」去猜
+      if (p.status === 'running') tags.push(p.adopted ? '外部启动' : '平台启动');
       if (p.portStale) tags.push('端口已变');
       if (p.stopCommand) tags.push('自定义停止');
       console.log(

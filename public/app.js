@@ -135,8 +135,12 @@
 
   function stateCell(p) {
     if (p.status === 'running') {
-      return '<span class="state"><i class="dot running"></i><small>运行中</small>' +
-        (p.adopted ? '<span class="badge info">接管</span>' : '') + '</span>';
+      // ★ 来源必须明说，不能靠「有没有徽标」来暗示 —— 用户会误以为没徽标就是没纳管。
+      //   外部启动 = 平台没启动它，只是接管了 PID（扫描导入 / 平台重启认回 / 点启动时发现已在跑）
+      var origin = p.adopted
+        ? '<span class="badge info" title="不是平台启动的，平台只是接管了它的 PID（来源：扫描导入、平台重启后认回、或点「启动」时发现它已经在跑）。停止时照样能停掉。">外部启动</span>'
+        : '<span class="badge" title="这个进程是平台启动的，PID 和日志从一开始就由平台掌握。">平台启动</span>';
+      return '<span class="state"><i class="dot running"></i><small>运行中</small>' + origin + '</span>';
     }
     if (p.external) return '<span class="state"><i class="dot orphan"></i><small>外部运行中</small></span>';
     if (p.orphan) return '<span class="state"><i class="dot orphan"></i><small>残留占用</small></span>';
@@ -784,7 +788,7 @@
       confirmDialog({
         title: '全部停止',
         body: '将停止 <b>' + targets.length + '</b> 个正在运行的项目。<br>' +
-          '<span class="dim">平台启动的会杀掉整个进程组；接管来的进程也会被停止。</span>',
+          '<span class="dim">平台启动的会杀掉整个进程组；外部启动的（接管来的）也会被停止。</span>',
         okText: '全部停止',
         danger: true
       }).then(function (yes) { if (yes) run(); });

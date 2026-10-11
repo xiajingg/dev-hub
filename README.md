@@ -45,9 +45,9 @@ cp -R skills/dev-hub ~/.workbuddy-ai/skills/  # WorkBuddy
 
 ```sh
 node skills/dev-hub/scripts/devhub.js list
-node skills/dev-hub/scripts/devhub.js start  ok-crm后端
-node skills/dev-hub/scripts/devhub.js logs   agent 50
-node skills/dev-hub/scripts/devhub.js stop   seckill
+node skills/dev-hub/scripts/devhub.js start  my-api
+node skills/dev-hub/scripts/devhub.js logs   my-api 50
+node skills/dev-hub/scripts/devhub.js stop   my-web
 ```
 
 | 命令 | 作用 |

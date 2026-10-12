@@ -537,8 +537,40 @@
     var bound = (project && project.cfHosts) || [];
     if (!bound.length) return '';
     return '<div class="cfbound">已绑定：' + bound.map(function (h) {
-      return '<a href="' + esc(h.url) + '" target="_blank" rel="noopener">' + esc(h.hostname) + '</a>';
-    }).join('、') + '</div>';
+      return '<span class="cfhost">' +
+        '<a href="' + esc(h.url) + '" target="_blank" rel="noopener">' + esc(h.hostname) + '</a>' +
+        '<button class="mini cfunbind" data-host="' + esc(h.hostname) + '" ' +
+        'title="解绑：从 tunnel 配置里移除这条规则，并删掉 Cloudflare 上的 DNS 记录">解绑</button>' +
+        '</span>';
+    }).join('') + '</div>';
+  }
+
+  // 解绑：会真的改 Cloudflare（摘 ingress 规则 + 删 DNS），所以先弹确认
+  function bindCfUnbind(box, rerender) {
+    Array.prototype.forEach.call(box.querySelectorAll('.cfunbind'), function (b) {
+      b.addEventListener('click', function () {
+        var host = b.getAttribute('data-host');
+        if (!window.confirm('解绑 ' + host + '？\n\n会从 tunnel 配置里删掉这条规则，并删除 Cloudflare 上的 DNS 记录。')) return;
+        b.disabled = true;
+        b.textContent = '解绑中…';
+        api('/api/cloudflare/unbind', { method: 'POST', body: JSON.stringify({ hostname: host }) })
+          .then(function (r) {
+            if (r.error) {
+              toast('解绑失败', r.error, 'err');
+            } else {
+              toast('已解绑', host, 'ok');
+              if (r.warning) toast('注意', r.warning, 'warn');
+            }
+            rerender();
+            return load(true);
+          })
+          .catch(function (e) {
+            toast('解绑失败', e.message, 'err');
+            b.disabled = false;
+            b.textContent = '解绑';
+          });
+      });
+    });
   }
 
   function cfCreateRow(project, domain) {
@@ -611,6 +643,7 @@
       });
     });
     bindCfCreate(project, function () { renderCfBox(project); });
+    bindCfUnbind(box, function () { renderCfBox(project); });
   }
 
   // 本地模式
@@ -667,6 +700,7 @@
       });
     });
     if ($('cfCreate')) bindCfCreate(project, function () { renderCfBox(project); });
+    bindCfUnbind(box, function () { renderCfBox(project); });
   }
 
   function openNew() {

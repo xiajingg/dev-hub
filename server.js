@@ -181,6 +181,12 @@ async function handleApi(req, res, method, pathname, url) {
     return sendJson(res, r.error ? r.code || 400 : 200, r);
   }
 
+  // 解绑域名（同样会真的改 Cloudflare：摘掉 ingress 规则 + 删 DNS 记录）
+  if (pathname === '/api/cloudflare/unbind' && method === 'POST') {
+    const r = await api.cloudflareUnbind(body);
+    return sendJson(res, r.error ? r.code || 400 : 200, r);
+  }
+
   return sendJson(res, 404, { error: 'Not found: ' + method + ' ' + pathname });
 }
 

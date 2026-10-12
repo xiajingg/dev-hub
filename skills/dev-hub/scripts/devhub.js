@@ -95,8 +95,14 @@ function cmdList() {
 async function cmdStart(ref) {
   const p = await findProject(ref);
   const r = await api('/api/projects/' + p.id + '/start', { method: 'POST' });
-  if (r.adopted) console.log('已接管：' + (r.message || p.name) + '（pid ' + r.pid + '）');
-  else console.log('已启动：' + p.name + '（pid ' + r.pid + '）');
+  if (r.adopted) {
+    // 「接管」= 平台没启动它，只是认了它的 PID。措辞必须说准，
+    // 否则会被读成「点了启动却没生效」。
+    console.log('服务本来就在跑（平台只接管了它的 PID，来源标「外部启动」）：' + (r.message || p.name) + '（pid ' + r.pid + '）');
+    if (r.warning) console.log('注意：' + r.warning);
+  } else {
+    console.log('已启动：' + p.name + '（pid ' + r.pid + '）');
+  }
   (r.warnings || []).forEach((w) => console.log('注意：' + w));
 }
 

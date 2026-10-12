@@ -482,7 +482,10 @@
             toast('已停止', p.name + how, 'ok');
             if (r.warning) toast('注意', r.warning, 'warn');
           } else if (r.adopted) {
-            toast('已接管', r.message || p.name + ' 本来就在跑', 'ok');
+            // 「接管」的准确含义是「平台没启动它，只是认了它的 PID」——
+            // 必须说清楚，否则用户会以为「点了启动却没生效」（已经踩过两次）。
+            toast('服务本来就在跑', r.message || (p.name + ' 已在运行，平台接管了它的 PID（来源标为「外部启动」）'), 'warn');
+            if (r.warning) toast('注意', r.warning, 'warn');
           } else {
             toast(act === 'start' ? '已启动' : '已重启', p.name + (r.pid ? ' · PID ' + r.pid : ''), 'ok');
           }

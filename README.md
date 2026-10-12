@@ -333,7 +333,16 @@ pm2 delete <应用名>
 **配 API Token（一次性）**：
 
 1. 去 [Cloudflare Dashboard](https://dash.cloudflare.com/profile/api-tokens) → My Profile → API Tokens → **Create Token**
-2. 用 **Custom token**，权限给 `Account` → `Cloudflare Tunnel` → **Read**（想让它帮你建域名就再加 **Edit**）
+2. 用 **Custom token**，权限加**三条** —— 缺任何一条都会在对应步骤失败：
+
+   | 权限 | 干什么用的 | 缺了会怎样 |
+   |---|---|---|
+   | `Account` → `Cloudflare Tunnel` → **Read** | 读 tunnel 列表和配置 | 同步结果为空，一个域名都看不到 |
+   | `Zone` → `Zone` → **Read** | 查域名对应的 zone id | 绑定时报「**账号下找不到域名 xxx**」——**这个提示很误导，看着像域名不在你账号下，其实是没给 Zone 权限** |
+   | `Zone` → `DNS` → **Edit** | 建 / 删 CNAME 记录 | 绑定时报没权限 |
+
+   > 加完 Zone 权限后，页面下方会多出一栏 **「区域资源」** —— 必须选 `包括` → 你的域名（或「所有区域」）。
+   > 只配了 Account 权限时，这一栏根本不会出现，所以得**先加 Zone 权限**才看得到。
 3. 在平台的「编辑项目 → Cloudflare 域名」里点「用 API Token 自动同步」，填三样：
    - **API Token** —— 上一步生成的
    - **Account ID** —— Cloudflare 后台右侧栏能看到

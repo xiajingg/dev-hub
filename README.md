@@ -54,21 +54,14 @@ cd ~/Documents/dev-hub
 |---|---|
 | [docs/usage.md](docs/usage.md) | **用法**：登记项目、启停、看日志、停止命令、日志文件、扫描导入、端口规则、唯一键、守护进程（为什么有些服务停不掉）|
 | [docs/cloudflare.md](docs/cloudflare.md) | **Cloudflare 域名**（可选）：把端口对上公网域名，自动同步 / 绑定 / 解绑 |
+| [docs/ai-skill.md](docs/ai-skill.md) | **给 AI 用**：skill 与 CLI —— 让 AI 助手直接查状态、启停服务、看日志、登记项目 |
 | [docs/internals.md](docs/internals.md) | **内部设计**：进程组与 detached、平台重启后如何认回项目、目录结构、HTTP API、已知限制 |
 
 ---
 
-## 给 AI 用（skill + CLI）
+## 给 AI 用
 
-仓库自带一个 skill，让 AI 助手能直接操作平台 —— 查状态、启停服务、看日志、登记项目。
-
-```
-skills/dev-hub/
-├─ SKILL.md            给 AI 读的操作指南（触发词、工作流、必须知道的规则）
-└─ scripts/devhub.js   命令行客户端（AI 用它，不用手搓 curl）
-```
-
-**装到你用的 AI 工具**（各家的 skills 目录）：
+仓库自带一个 skill + CLI，让 AI 助手能直接操作平台 —— 查状态、启停服务、看日志、登记项目。
 
 ```sh
 cp -R skills/dev-hub ~/.claude/skills/        # Claude Code
@@ -76,25 +69,17 @@ cp -R skills/dev-hub ~/.codex/skills/         # Codex
 cp -R skills/dev-hub ~/.workbuddy-ai/skills/  # WorkBuddy
 ```
 
-**也可以不装 skill，直接当命令行用：**
+不装 skill 也可以直接当命令行用：
 
 ```sh
 node skills/dev-hub/scripts/devhub.js list
-node skills/dev-hub/scripts/devhub.js start  my-api
-node skills/dev-hub/scripts/devhub.js logs   my-api 50
-node skills/dev-hub/scripts/devhub.js stop   my-web
+node skills/dev-hub/scripts/devhub.js start my-api
 ```
 
-| 命令 | 作用 |
-|---|---|
-| `list` | 列出所有项目、状态、端口、PID、内存，以及 `[平台启动]` `[外部启动]` `[端口已变]` 等标记 |
-| `start` / `stop` / `restart <项目>` | 启停重启（`start` 会自动接管已在跑的服务） |
-| `logs <项目> [行数]` | 打印日志尾部（默认 80 行） |
-| `add "<命令>" [--name --port --host --stop --log]` | 登记新项目 |
-| `scan` / `import <名字>` | 扫描当前在跑的服务并导入 |
-| `ports <目录>` | 查该目录下在监听的端口 |
-| `parse "<命令>"` | 只解析命令里的 `cd`，不登记 |
+完整命令表、安装细节和注意事项见 **[docs/ai-skill.md](docs/ai-skill.md)**。
 
-`<项目>` 可以是 id、完整名字、或名字的一部分。平台地址用 `DEVHUB_URL` 覆盖（默认 `http://127.0.0.1:4321`）。
+---
 
-> 改了 `skills/` 下的文件，记得重新 `cp` 到各 AI 工具的目录 —— 仓库是源，安装位置是副本。
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=xiajingg/dev-hub&type=Date)](https://star-history.com/#xiajingg/dev-hub&Date)

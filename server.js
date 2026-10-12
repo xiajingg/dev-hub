@@ -166,6 +166,15 @@ async function handleApi(req, res, method, pathname, url) {
     return sendJson(res, 200, await api.cloudflareStatus());
   }
 
+  // 保存 / 清除 Cloudflare API Token（存在 data/cloudflare.json，权限 600）
+  if (pathname === '/api/cloudflare/credentials' && method === 'POST') {
+    const r = await api.cloudflareSaveCredentials(body);
+    return sendJson(res, r.error ? r.code || 400 : 200, r);
+  }
+  if (pathname === '/api/cloudflare/credentials' && method === 'DELETE') {
+    return sendJson(res, 200, await api.cloudflareClearCredentials());
+  }
+
   // 创建 tunnel 并绑定域名（会真的改 Cloudflare 上的 DNS，前端必须让用户明确确认）
   if (pathname === '/api/cloudflare/tunnel' && method === 'POST') {
     const r = await api.cloudflareCreate(body);

@@ -447,6 +447,12 @@ a.cflink:hover { text-decoration: underline; text-underline-offset: 2px; }
 .cfnew input { flex: 1; min-width: 0; }
 .cfnew button { white-space: nowrap; }
 
+.cfdrop { margin-left: 8px; }
+.cfapi { margin-top: 10px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.cfapiform { margin-top: 8px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.cfapiform input { flex: 1; min-width: 150px; }
+.cfapiform.hidden { display: none; }
+
 /* 端口清单浮层 */
 #portPop {
   position: fixed; z-index: 80; display: none;

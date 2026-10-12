@@ -516,80 +516,157 @@
   // ================================================================== 新建 / 编辑
 
   // 表单里的 Cloudflare 区域。
-  // 三档状态各说各的：没装 → 给官网；装了没登录 → 给登录命令；已登录 → 允许创建绑定。
+  //
+  // 两种模式：
+  //   api   —— 配了 API Token，直接调 Cloudflare API，**能读到配置在后台的 tunnel（token 模式）**
+  //   local —— 没配凭据，读本机 ~/.cloudflared/config.yml，受限于「配置必须在本地」
   function renderCfBox(project) {
     var box = $('cfBox');
     if (!box) return;
     box.innerHTML = '<span class="dim">检测中…</span>';
 
     api('/api/cloudflare').then(function (cf) {
-      if (!cf.installed) {
-        box.innerHTML = '<div class="cfstate"><span class="bad">未安装 cloudflared</span>' +
-          '<span class="dim"> · 需要的话去 </span>' +
-          '<a href="' + esc(cf.installUrl) + '" target="_blank" rel="noopener">' + esc(cf.installUrl) + '</a>' +
-          '<span class="dim"> 下载</span></div>';
-        return;
-      }
-
-      if (!cf.loggedIn) {
-        box.innerHTML = '<div class="cfstate"><span class="warn">已安装 cloudflared ' + esc(cf.version || '') +
-          '，但还没登录</span></div>' +
-          '<div class="hint"><span class="dim">在终端执行一次授权（会打开浏览器让你选域名）：</span> <code>' + esc(cf.loginHint) + '</code></div>';
-        return;
-      }
-
-      var bound = (project && project.cfHosts) || [];
-      var html = '<div class="cfstate"><span class="ok">cloudflared ' + esc(cf.version || '') + ' · 已登录</span>' +
-        (cf.configPath ? '<span class="dim"> · ' + esc(cf.configPath) + '</span>' : '') + '</div>';
-
-      if (bound.length) {
-        html += '<div class="cfbound">已绑定：' + bound.map(function (h) {
-          return '<a href="' + esc(h.url) + '" target="_blank" rel="noopener">' + esc(h.hostname) + '</a>';
-        }).join('、') + '</div>';
-      }
-
-      html += '<div class="cfnew">' +
-        '<input id="cfPrefix" placeholder="前缀，例如 myapp" />' +
-        '<input id="cfDomain" placeholder="域名，例如 example.com" />' +
-        '<button class="mini" id="cfCreate">创建并绑定</button>' +
-        '</div>' +
-        '<div class="hint"><span class="dim">会新建一个 tunnel，并把 <code>前缀.域名</code> 指到这个项目的端口' +
-        '（<b>会真的修改 Cloudflare 上的 DNS</b>）。</span></div>';
-
-      box.innerHTML = html;
-
-      var btn = $('cfCreate');
-      if (!btn) return;
-      btn.addEventListener('click', function () {
-        var prefix = ($('cfPrefix').value || '').trim();
-        var domain = ($('cfDomain').value || '').trim();
-        if (!prefix || !domain) { toast('信息不全', '前缀和域名都要填', 'warn'); return; }
-        var port = (project && project.port) || Number($('fPort').value) || null;
-        btn.disabled = true;
-        btn.textContent = '创建中…';
-        api('/api/cloudflare/tunnel', {
-          method: 'POST',
-          body: JSON.stringify({ prefix: prefix, domain: domain, projectId: project && project.id, port: port })
-        }).then(function (r) {
-          if (r.error) {
-            toast('创建失败', r.error, 'err');
-          } else {
-            toast('已绑定', r.hostname, 'ok');
-            (r.nextSteps || []).forEach(function (s) { toast('下一步', s, 'warn'); });
-          }
-          btn.disabled = false;
-          btn.textContent = '创建并绑定';
-          renderCfBox(project);
-          return load(true);
-        }).catch(function (e) {
-          toast('创建失败', e.message, 'err');
-          btn.disabled = false;
-          btn.textContent = '创建并绑定';
-        });
-      });
+      if (cf.mode === 'api') return renderCfApi(box, cf, project);
+      return renderCfLocal(box, cf, project);
     }).catch(function (e) {
       box.innerHTML = '<span class="bad">检测失败：' + esc(e.message) + '</span>';
     });
+  }
+
+  function cfBoundHtml(project) {
+    var bound = (project && project.cfHosts) || [];
+    if (!bound.length) return '';
+    return '<div class="cfbound">已绑定：' + bound.map(function (h) {
+      return '<a href="' + esc(h.url) + '" target="_blank" rel="noopener">' + esc(h.hostname) + '</a>';
+    }).join('、') + '</div>';
+  }
+
+  function cfCreateRow(project, domain) {
+    return '<div class="cfnew">' +
+      '<input id="cfPrefix" placeholder="前缀，例如 myapp" />' +
+      '<input id="cfDomain" placeholder="域名，例如 example.com" value="' + esc(domain || '') + '" />' +
+      '<button class="mini" id="cfCreate">绑定</button>' +
+      '</div>';
+  }
+
+  function bindCfCreate(project, rerender) {
+    var btn = $('cfCreate');
+    if (!btn) return;
+    btn.addEventListener('click', function () {
+      var prefix = ($('cfPrefix').value || '').trim();
+      var domain = ($('cfDomain').value || '').trim();
+      if (!prefix || !domain) { toast('信息不全', '前缀和域名都要填', 'warn'); return; }
+      var port = (project && project.port) || Number($('fPort').value) || null;
+      btn.disabled = true;
+      btn.textContent = '绑定中…';
+      api('/api/cloudflare/tunnel', {
+        method: 'POST',
+        body: JSON.stringify({ prefix: prefix, domain: domain, projectId: project && project.id, port: port })
+      }).then(function (r) {
+        if (r.error) {
+          toast('绑定失败', r.error, 'err');
+        } else {
+          toast('已绑定', r.hostname, 'ok');
+          if (r.note) toast('说明', r.note, 'ok');
+          (r.nextSteps || []).forEach(function (s) { toast('下一步', s, 'warn'); });
+        }
+        btn.disabled = false;
+        btn.textContent = '绑定';
+        rerender();
+        return load(true);
+      }).catch(function (e) {
+        toast('绑定失败', e.message, 'err');
+        btn.disabled = false;
+        btn.textContent = '绑定';
+      });
+    });
+  }
+
+  // API 模式
+  function renderCfApi(box, cf, project) {
+    var c = cf.credentials || {};
+    var html = '<div class="cfstate"><span class="ok">API 模式</span>' +
+      '<span class="dim"> · ' + esc(c.accountId || '?') + ' · ' + esc(c.tokenHint || '') + '</span>' +
+      '<button class="mini cfdrop" id="cfDrop">断开</button></div>';
+
+    if (cf.syncError) {
+      html += '<div class="hint"><span class="bad">同步失败：' + esc(cf.syncError) + '</span></div>';
+    } else {
+      html += '<div class="hint"><span class="dim">已同步 ' + (cf.tunnels || []).length + ' 个 tunnel、' +
+        (cf.entries || []).length + ' 条域名映射</span></div>';
+    }
+
+    html += cfBoundHtml(project);
+    html += cfCreateRow(project, c.zone);
+    html += '<div class="hint"><span class="dim">会往你现有的 tunnel 上加一条规则并建 CNAME（<b>会真的改 Cloudflare 上的 DNS</b>）。' +
+      '配置存在 Cloudflare 后台，改完立即生效、不用重启 cloudflared。</span></div>';
+
+    box.innerHTML = html;
+
+    $('cfDrop').addEventListener('click', function () {
+      api('/api/cloudflare/credentials', { method: 'DELETE' }).then(function () {
+        toast('已断开', 'API 凭据已清除', 'ok');
+        renderCfBox(project);
+        return load(true);
+      });
+    });
+    bindCfCreate(project, function () { renderCfBox(project); });
+  }
+
+  // 本地模式
+  function renderCfLocal(box, cf, project) {
+    var html = '';
+    if (!cf.installed) {
+      html += '<div class="cfstate"><span class="bad">未安装 cloudflared</span>' +
+        '<span class="dim"> · 需要的话去 </span>' +
+        '<a href="' + esc(cf.installUrl) + '" target="_blank" rel="noopener">' + esc(cf.installUrl) + '</a>' +
+        '<span class="dim"> 下载</span></div>';
+    } else if (!cf.loggedIn) {
+      html += '<div class="cfstate"><span class="warn">已安装 cloudflared ' + esc(cf.version || '') +
+        '，但还没登录</span></div>' +
+        '<div class="hint"><span class="dim">在终端授权一次（会打开浏览器）：</span> <code>' + esc(cf.loginHint) + '</code></div>';
+    } else {
+      html += '<div class="cfstate"><span class="ok">cloudflared ' + esc(cf.version || '') + ' · 已登录</span>' +
+        (cf.configPath ? '<span class="dim"> · ' + esc(cf.configPath) + '</span>' : '') + '</div>';
+      html += cfBoundHtml(project);
+      html += cfCreateRow(project, '');
+    }
+
+    html += '<div class="cfapi"><button class="mini" id="cfUseApi">用 API Token 自动同步</button>' +
+      '<span class="dim">配置在 Cloudflare 后台的 tunnel（token 模式）只有这种方式读得到</span></div>' +
+      '<div id="cfApiForm" class="cfapiform hidden">' +
+      '<input id="cfToken" placeholder="API Token" />' +
+      '<input id="cfAcc" placeholder="Account ID" />' +
+      '<input id="cfZone" placeholder="域名，例如 example.com" />' +
+      '<button class="mini" id="cfSaveApi">保存并同步</button>' +
+      '</div>';
+
+    box.innerHTML = html;
+
+    $('cfUseApi').addEventListener('click', function () {
+      $('cfApiForm').classList.toggle('hidden');
+    });
+    $('cfSaveApi').addEventListener('click', function () {
+      var b = $('cfSaveApi');
+      var token = ($('cfToken').value || '').trim();
+      if (!token) { toast('缺 Token', 'API Token 不能为空', 'warn'); return; }
+      b.disabled = true;
+      b.textContent = '保存中…';
+      api('/api/cloudflare/credentials', {
+        method: 'POST',
+        body: JSON.stringify({ apiToken: token, accountId: $('cfAcc').value, zone: $('cfZone').value })
+      }).then(function (r) {
+        toast(r.error ? '保存失败' : '已保存', r.error || '正在同步 Cloudflare 配置', r.error ? 'err' : 'ok');
+        renderCfBox(project);
+        return load(true);
+      }).catch(function (e) {
+        toast('保存失败', e.message, 'err');
+      }).then(function () {
+        b.disabled = false;
+        b.textContent = '保存并同步';
+      });
+    });
+    if ($('cfCreate')) bindCfCreate(project, function () { renderCfBox(project); });
   }
 
   function openNew() {

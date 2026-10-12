@@ -321,8 +321,33 @@ pm2 delete <应用名>
 
 ### 11. Cloudflare 域名（可选）
 
-如果本机装了 [`cloudflared`](https://www.cloudflare.com/)，平台会把项目的端口和公网域名对上，
-列表里多一列「域名」，点一下就能打开。
+平台能把项目的端口和公网域名对上，列表里多一列「域名」，点一下就能打开。
+
+**两种模式，优先用 API 模式**：
+
+| 模式 | 怎么来的 | 能读到什么 |
+|---|---|---|
+| **API 模式**（推荐） | 你配一个 Cloudflare API Token | **账号下所有 tunnel 的配置** —— 包括在 Cloudflare 后台建的（token 模式）。那种本地根本没有配置文件，只有 API 读得到 |
+| **本地模式** | 读 `~/.cloudflared/config.yml` | 只有本机 `config.yml` 里写的规则 |
+
+**配 API Token（一次性）**：
+
+1. 去 [Cloudflare Dashboard](https://dash.cloudflare.com/profile/api-tokens) → My Profile → API Tokens → **Create Token**
+2. 用 **Custom token**，权限给 `Account` → `Cloudflare Tunnel` → **Read**（想让它帮你建域名就再加 **Edit**）
+3. 在平台的「编辑项目 → Cloudflare 域名」里点「用 API Token 自动同步」，填三样：
+   - **API Token** —— 上一步生成的
+   - **Account ID** —— Cloudflare 后台右侧栏能看到
+   - **域名** —— 你的主域名，例如 `example.com`（填一次，之后只用填前缀）
+
+配好之后**全自动**：面板每次刷新都会同步 Cloudflare 上的配置（30 秒缓存），
+填个前缀点「绑定」就行，不用再去后台手动加规则。
+
+> Token 存在 `data/cloudflare.json`，权限 600，`data/` 已被 `.gitignore` 排除。
+> 平台**只判断它存不存在，绝不回显内容**（界面上只显示 `前6位…后4位`）。
+
+---
+
+不想用 API 模式的话，下面是**本地模式**的行为。
 
 **分三档处理，取决于本机的实际状态**：
 

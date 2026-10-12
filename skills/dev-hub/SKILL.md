@@ -205,6 +205,10 @@ launchd（`KeepAlive`）或 pm2 托管的服务，**平台永远停不掉它** �
 
 > **别自己动手 `launchctl unload` / `pm2 delete`** —— 那是用户系统级的配置，动之前必须问他。
 
+> **识别覆盖范围**：只认 launchd 和 pm2。自定义的 supervisor 脚本（`while :; do node x; done` 那种）
+> 认不出来 —— 但「复活检测」照样会返回 `resurrected`，只是 `guardian` 为空、warning 走通用文案。
+> 这时让用户自己去看项目的启动脚本。
+
 ### 7. 日志是增量读的
 
 `GET /logs?offset=N` 返回从第 N 字节开始的新内容，同时给出新的 `offset`。

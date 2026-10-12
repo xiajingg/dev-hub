@@ -247,12 +247,21 @@ cd ~/projects/my-go-svc && go run . -addr :8100
 > （任务 com.example.mygame，KeepAlive 开着），杀掉会被立刻重新拉起。平台停不掉它 ——
 > 要先用它自己的方式停：`launchctl unload ~/Library/LaunchAgents/com.example.mygame.plist`
 
-识别依据是硬的，不猜：
+识别依据是硬的，不猜。**主判据刻意不用 `launchctl list`** —— 实测它会在受限环境下**间歇性失败**
+（同一台机器上，几分钟前还能列出全部任务，之后连在 shell 里直接跑都返回空）。改成直接读 plist 文件：
 
-| 托管方式 | 判据 |
-|---|---|
-| **launchd** | `launchctl list` 里 PID 对得上的那个任务，再读它的 plist 确认 `KeepAlive` |
-| **pm2** | 进程环境变量里有 `PM2_HOME` / `pm_id` |
+| 判据 | 强度 | 说明 |
+|---|---|---|
+| 进程的 **stdout 指向任务配置的 `StandardOutPath`** | 强 | launchd 把任务的输出接在它指定的文件上，这个对应关系很难是巧合 |
+| **工作目录一致**，且任务要执行的脚本就在该目录下 | 中 | 覆盖那些自己把 stdio 重定向掉的服务（比如 nginx 把它重定向到 `/dev/null`） |
+| 进程**命令行**包含任务的全部参数 | 强 | 只在 `ps` 可用时生效，覆盖「启动脚本还活着」的情况 |
+
+> `/dev/*` 这类路径会被排除 —— 一堆 daemon 都把 stdio 丢进 `/dev/null`，拿它匹配会误判
+> （实测 nginx 就被错认成一个完全不相干的系统任务）。
+
+pm2 则看进程环境变量里有没有 `PM2_HOME` / `pm_id`。
+
+> 返回里带 `guardian.launchd.confidence`：`high` = 前两条判据之一命中，`medium` = 靠工作目录判断。
 
 **这类项目在平台上的两个表现**（提示里都会说清）：
 

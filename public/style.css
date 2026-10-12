@@ -425,6 +425,28 @@ a.portlink:hover { text-decoration: underline; text-underline-offset: 2px; }
 .portmore { cursor: pointer; transition: background .14s var(--ease), color .14s var(--ease); }
 .portmore:hover { background: rgba(120, 120, 128, .24); color: var(--text); }
 
+.col-cf { white-space: nowrap; }
+a.cflink { color: var(--blue-ink); text-decoration: none; font-size: 12px; }
+a.cflink:hover { text-decoration: underline; text-underline-offset: 2px; }
+.cfmore {
+  margin-left: 6px; font-style: normal; font-size: 11px;
+  padding: 1px 5px; border-radius: 8px;
+  background: rgba(120, 120, 128, .16); color: var(--text-2);
+  cursor: help;
+}
+
+.cfbox { font-size: 13px; }
+.cfstate { margin-bottom: 6px; }
+.cfstate .ok { color: var(--blue-ink); }
+.cfstate .warn { color: var(--orange-ink); }
+.cfstate .bad { color: var(--red-ink); }
+.cfbound { margin-bottom: 8px; }
+.cfbound a { color: var(--blue-ink); text-decoration: none; }
+.cfbound a:hover { text-decoration: underline; }
+.cfnew { display: flex; gap: 8px; align-items: center; }
+.cfnew input { flex: 1; min-width: 0; }
+.cfnew button { white-space: nowrap; }
+
 /* 端口清单浮层 */
 #portPop {
   position: fixed; z-index: 80; display: none;

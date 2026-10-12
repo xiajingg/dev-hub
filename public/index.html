@@ -46,6 +46,7 @@
           <th style="width:118px">状态</th>
           <th class="col-name">名称</th>
           <th style="width:130px">端口</th>
+          <th class="col-cf" style="width:172px">域名</th>
           <th class="col-pid" style="width:76px">PID</th>
           <th class="col-mem" style="width:82px">内存</th>
           <th class="col-cwd">工作目录</th>
@@ -99,6 +100,10 @@
           <input id="fLogFile" placeholder="留空则显示平台抓取的输出" />
           <div class="hint"><span class="dim">填了就实时滚动这个文件。支持 <code>~</code> 和相对项目目录的写法。</span></div>
         </div>
+      </div>
+      <div class="field">
+        <label>Cloudflare 域名（可选）</label>
+        <div class="cfbox" id="cfBox"><span class="dim">检测中…</span></div>
       </div>
     </div>
     <div class="modal-foot">

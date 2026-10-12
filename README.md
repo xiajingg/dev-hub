@@ -319,6 +319,39 @@ pm2 delete <应用名>
 
 ---
 
+### 11. Cloudflare 域名（可选）
+
+如果本机装了 [`cloudflared`](https://www.cloudflare.com/)，平台会把项目的端口和公网域名对上，
+列表里多一列「域名」，点一下就能打开。
+
+**分三档处理，取决于本机的实际状态**：
+
+| 状态 | 平台怎么做 |
+|---|---|
+| **没装 cloudflared** | 表单里提示一句 + 给官网链接。**不引导安装** —— 用不用你自己决定 |
+| **装了但没登录** | 提示先跑一次 `cloudflared tunnel login`（浏览器授权，必须你本人点，平台代劳不了）|
+| **已登录** | 列表显示每个端口绑定的域名；表单里填「前缀 + 域名」就能新建 tunnel 并绑定 |
+
+**映射是从哪来的**：读 `~/.cloudflared/config.yml` 里的 `ingress` 规则 ——
+`hostname: myapp.example.com` 和 `service: http://localhost:5173` 这样的配对，
+平台按 `service` 里的端口把它挂到对应项目上。
+
+**创建会做三件事**（都会真的动你的 Cloudflare）：
+
+1. `cloudflared tunnel create <名字>` —— 已有同名 tunnel 就**复用**，不重复建
+2. `cloudflared tunnel route dns <名字> <前缀.域名>` —— 加一条 CNAME
+3. 往 `~/.cloudflared/config.yml` 的 `ingress` 里插一条规则 —— **改之前先备份**，备份路径在返回里
+
+> ⚠️ 第 2 步会**真的修改 Cloudflare 上的 DNS 记录**，所以必须你点按钮才执行。
+
+**平台刻意不做的事**：
+
+- **不帮你登录** —— `tunnel login` 是浏览器授权流程，只能本人操作
+- **不自动跑 tunnel** —— 建完会提示 `cloudflared tunnel run <名字>`；要不要开机自启（`sudo cloudflared service install`）你自己定
+- **读不到 token 模式的 tunnel** —— 如果你是在 Cloudflare 后台建的 tunnel（用 `tunnel run --token-file` 那种），配置在后台、本地只有一个 token 文件，平台拿不到「哪个域名对应哪个端口」
+
+---
+
 ## 设计要点
 
 | 问题 | 做法 |
@@ -343,6 +376,8 @@ dev-hub/
 │  ├─ portclass.js      端口分类：把一堆监听端口收敛成主端口
 │  ├─ logs.js           日志落盘、轮转、增量读取、外部日志文件
 │  ├─ scanner.js        扫描运行中的服务
+│  ├─ guardian.js       守护进程探测（launchd / pm2 保活，解释「为什么停不掉」）
+│  ├─ cloudflare.js     Cloudflare Tunnel：端口→域名映射、创建并绑定
 │  └─ api.js            业务逻辑
 ├─ public/              前端（纯静态，无构建）
 │  ├─ index.html        页面结构
@@ -371,6 +406,8 @@ dev-hub/
 | POST | `/api/ports/by-cwd` | 查某目录下在监听的服务端口 |
 | POST | `/api/scan` | 扫描运行中的服务 |
 | POST | `/api/import` | 导入选中的候选 |
+| GET | `/api/cloudflare` | cloudflared 状态 + 端口→域名映射 + tunnel 列表 |
+| POST | `/api/cloudflare/tunnel` | 创建 tunnel 并绑定域名（**会真的改 Cloudflare DNS**）|
 
 ## 已知限制
 

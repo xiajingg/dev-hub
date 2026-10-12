@@ -220,6 +220,33 @@ launchd（`KeepAlive`）或 pm2 托管的服务，**平台永远停不掉它** �
 
 子进程是 `detached` 独立出去的，stdout/stderr 直连日志文件。用户关掉平台，服务照常跑。
 
+### 9. Cloudflare 域名（可选）
+
+平台能把项目端口和公网域名对上，数据来自 `~/.cloudflared/config.yml` 的 `ingress` 规则。
+
+```sh
+curl -s http://127.0.0.1:4321/api/cloudflare
+```
+
+返回里几个关键字段：
+
+- `state` —— `not-installed` / `not-logged-in` / `ready`
+- `entries` —— 全部 `{hostname, port, service, tunnel}` 映射
+- `byPort` —— 同一批数据，按端口分组
+
+列表接口里每个项目的 **`cfHosts`** 就是它端口上绑的域名。
+
+**要新建绑定**用 `POST /api/cloudflare/tunnel`，body 是 `{prefix, domain, port}`：
+
+- ⚠️ **会真的改用户的 Cloudflare DNS**（加一条 CNAME），还会写 `~/.cloudflared/config.yml`（改前有备份）
+- 所以**必须用户明确要求才做**，而且要先把将创建的 hostname 说清楚让他确认
+- 没登录会返回 `needLogin: true` —— 把 `loginHint`（`cloudflared tunnel login`）转告用户，
+  **别自己去跑**，那是浏览器授权流程，必须本人点
+- 没装会返回 `needInstall: true` 和官网地址 —— 转告即可，不用劝他装
+
+> **平台不做这三件事**：不帮登录、不自动跑 tunnel、读不到 token 模式的 tunnel
+> （那种配置在 Cloudflare 后台，本地只有一个 token 文件）。
+
 ---
 
 ## 安全边界

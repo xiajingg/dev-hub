@@ -224,10 +224,22 @@
       '</div>';
   }
 
+  // Cloudflare 域名列：这个项目的端口上绑了哪些公网域名
+  function cfCell(p) {
+    var hosts = p.cfHosts || [];
+    if (!hosts.length) return '<span class="dim">—</span>';
+    var tip = hosts.map(function (h) { return h.hostname + '  →  ' + h.service; }).join('\n');
+    var extra = hosts.length - 1;
+    return '<a class="cflink" href="' + esc(hosts[0].url) + '" target="_blank" rel="noopener" title="' + esc(tip) + '">' +
+      esc(hosts[0].hostname) + '</a>' +
+      (extra > 0 ? '<i class="cfmore" title="' + esc(tip) + '">+' + extra + '</i>' : '');
+  }
+
   var CELLS = [
     { key: 'state' },
     { key: 'name', cls: 'col-name' },
     { key: 'port', cls: 'portcell' },
+    { key: 'cf', cls: 'col-cf' },
     { key: 'pid', cls: 'mono dim col-pid' },
     { key: 'mem', cls: 'mono dim col-mem' },
     { key: 'cwd', cls: 'mono dim col-cwd' },
@@ -240,6 +252,7 @@
       state: stateCell(p),
       name: nameCell(p),
       port: portCell(p),
+      cf: cfCell(p),
       pid: p.pid || '—',
       mem: fmtMem(p.memory),
       cwd: '<div class="truncate copyable" data-copy="' + esc(dir) + '" title="点击复制：' + esc(dir) + '">' + esc(dir) + '</div>',
@@ -502,6 +515,83 @@
 
   // ================================================================== 新建 / 编辑
 
+  // 表单里的 Cloudflare 区域。
+  // 三档状态各说各的：没装 → 给官网；装了没登录 → 给登录命令；已登录 → 允许创建绑定。
+  function renderCfBox(project) {
+    var box = $('cfBox');
+    if (!box) return;
+    box.innerHTML = '<span class="dim">检测中…</span>';
+
+    api('/api/cloudflare').then(function (cf) {
+      if (!cf.installed) {
+        box.innerHTML = '<div class="cfstate"><span class="bad">未安装 cloudflared</span>' +
+          '<span class="dim"> · 需要的话去 </span>' +
+          '<a href="' + esc(cf.installUrl) + '" target="_blank" rel="noopener">' + esc(cf.installUrl) + '</a>' +
+          '<span class="dim"> 下载</span></div>';
+        return;
+      }
+
+      if (!cf.loggedIn) {
+        box.innerHTML = '<div class="cfstate"><span class="warn">已安装 cloudflared ' + esc(cf.version || '') +
+          '，但还没登录</span></div>' +
+          '<div class="hint"><span class="dim">在终端执行一次授权（会打开浏览器让你选域名）：</span> <code>' + esc(cf.loginHint) + '</code></div>';
+        return;
+      }
+
+      var bound = (project && project.cfHosts) || [];
+      var html = '<div class="cfstate"><span class="ok">cloudflared ' + esc(cf.version || '') + ' · 已登录</span>' +
+        (cf.configPath ? '<span class="dim"> · ' + esc(cf.configPath) + '</span>' : '') + '</div>';
+
+      if (bound.length) {
+        html += '<div class="cfbound">已绑定：' + bound.map(function (h) {
+          return '<a href="' + esc(h.url) + '" target="_blank" rel="noopener">' + esc(h.hostname) + '</a>';
+        }).join('、') + '</div>';
+      }
+
+      html += '<div class="cfnew">' +
+        '<input id="cfPrefix" placeholder="前缀，例如 myapp" />' +
+        '<input id="cfDomain" placeholder="域名，例如 example.com" />' +
+        '<button class="mini" id="cfCreate">创建并绑定</button>' +
+        '</div>' +
+        '<div class="hint"><span class="dim">会新建一个 tunnel，并把 <code>前缀.域名</code> 指到这个项目的端口' +
+        '（<b>会真的修改 Cloudflare 上的 DNS</b>）。</span></div>';
+
+      box.innerHTML = html;
+
+      var btn = $('cfCreate');
+      if (!btn) return;
+      btn.addEventListener('click', function () {
+        var prefix = ($('cfPrefix').value || '').trim();
+        var domain = ($('cfDomain').value || '').trim();
+        if (!prefix || !domain) { toast('信息不全', '前缀和域名都要填', 'warn'); return; }
+        var port = (project && project.port) || Number($('fPort').value) || null;
+        btn.disabled = true;
+        btn.textContent = '创建中…';
+        api('/api/cloudflare/tunnel', {
+          method: 'POST',
+          body: JSON.stringify({ prefix: prefix, domain: domain, projectId: project && project.id, port: port })
+        }).then(function (r) {
+          if (r.error) {
+            toast('创建失败', r.error, 'err');
+          } else {
+            toast('已绑定', r.hostname, 'ok');
+            (r.nextSteps || []).forEach(function (s) { toast('下一步', s, 'warn'); });
+          }
+          btn.disabled = false;
+          btn.textContent = '创建并绑定';
+          renderCfBox(project);
+          return load(true);
+        }).catch(function (e) {
+          toast('创建失败', e.message, 'err');
+          btn.disabled = false;
+          btn.textContent = '创建并绑定';
+        });
+      });
+    }).catch(function (e) {
+      box.innerHTML = '<span class="bad">检测失败：' + esc(e.message) + '</span>';
+    });
+  }
+
   function openNew() {
     state.editingId = null;
     $('editTitle').textContent = '新建项目';
@@ -517,6 +607,7 @@
     $('parseHint').innerHTML = '';
     $('portHint').innerHTML = '';
     $('maskEdit').classList.remove('hidden');
+    renderCfBox(null);
     $('fCommand').focus();
   }
 
@@ -534,6 +625,7 @@
     $('parseHint').innerHTML = '';
     $('portHint').innerHTML = '';
     $('maskEdit').classList.remove('hidden');
+    renderCfBox(p);
     doParse();
   }
 

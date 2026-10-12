@@ -161,6 +161,17 @@ async function handleApi(req, res, method, pathname, url) {
     return sendJson(res, 200, { results: await api.importCandidates(body.items) });
   }
 
+  // Cloudflare：环境状态 + 端口→域名映射 + tunnel 列表
+  if (pathname === '/api/cloudflare' && method === 'GET') {
+    return sendJson(res, 200, await api.cloudflareStatus());
+  }
+
+  // 创建 tunnel 并绑定域名（会真的改 Cloudflare 上的 DNS，前端必须让用户明确确认）
+  if (pathname === '/api/cloudflare/tunnel' && method === 'POST') {
+    const r = await api.cloudflareCreate(body);
+    return sendJson(res, r.error ? r.code || 400 : 200, r);
+  }
+
   return sendJson(res, 404, { error: 'Not found: ' + method + ' ' + pathname });
 }
 
